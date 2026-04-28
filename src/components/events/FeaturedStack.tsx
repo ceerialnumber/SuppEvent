@@ -2,10 +2,22 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import JoinButton from './JoinButton';
-import { ALL_EVENTS } from '../data/events';
+import { ALL_EVENTS } from '../../data/events';
 
-const FEATURED_IDS = [1, 2, 3];
-const FEATURED_EVENTS = ALL_EVENTS.filter(e => FEATURED_IDS.includes(e.id as number));
+const FEATURED_EVENTS = ALL_EVENTS.filter(e => {
+  const parts = e.date.split(' ');
+  if (parts.length < 3) return true;
+  const MONTH_MAP: Record<string, number> = {
+    'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+    'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11,
+    'January': 0, 'February': 1, 'March': 2, 'April': 3, 'June': 5,
+    'July': 6, 'August': 7, 'September': 8, 'October': 9, 'November': 10, 'December': 11
+  };
+  const eventDate = new Date(parseInt(parts[2]), MONTH_MAP[parts[1]] || 0, parseInt(parts[0]));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return eventDate >= today;
+}).slice(0, 5);
 
 interface FeaturedStackProps {
   onEventClick: (event: any, joined?: boolean) => void;
@@ -43,7 +55,7 @@ export default function FeaturedStack({ onEventClick, onSeeMore }: FeaturedStack
         onClick={onSeeMore}
         className="flex items-center justify-between w-full mb-4 group active:scale-95 transition-transform"
       >
-        <h2 className="text-2xl font-bold text-blue-600">Eye-catching!</h2>
+        <h2 className="text-2xl font-bold text-blue-600 uppercase">Eye-catching!</h2>
         <ArrowRight className="text-blue-600 w-6 h-6 group-hover:translate-x-1 transition-transform" />
       </button>
 
@@ -81,6 +93,9 @@ export default function FeaturedStack({ onEventClick, onSeeMore }: FeaturedStack
                 <div className="absolute bottom-8 left-8 right-8 text-white">
                   <div className="flex items-end justify-between">
                     <div>
+                      <p className="text-[10px] text-white/70 font-bold uppercase tracking-widest mb-1">
+                        By {event.organizer?.name || "CU Student Union"}
+                      </p>
                       <h3 className="text-2xl font-bold mb-1">{event.title}</h3>
                       <div className="text-sm font-medium">
                         <p>{event.date}</p>

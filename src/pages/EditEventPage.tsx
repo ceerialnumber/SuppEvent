@@ -1,6 +1,6 @@
-import { useState, useRef, ChangeEvent } from 'react';
+import { useState, useRef, ChangeEvent, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, ChevronLeft, ChevronRight, X, Loader2, MapPin } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, Loader2, Save, Trash2, MapPin } from 'lucide-react';
 import { 
   format, 
   addMonths, 
@@ -11,8 +11,8 @@ import {
   endOfWeek, 
   isSameMonth, 
   isSameDay, 
-  addDays, 
-  eachDayOfInterval 
+  eachDayOfInterval,
+  parse
 } from 'date-fns';
 import { 
   PartyIcon, 
@@ -37,8 +37,11 @@ const TYPES = [
   { id: 'learning', label: 'Learning', Icon: LearningIcon },
 ];
 
-interface CreateEventPageProps {
-  onSubmit?: (event: any) => void;
+interface EditEventPageProps {
+  event: any;
+  onSubmit: (updatedEvent: any) => void;
+  onDelete: (eventId: string | number) => void;
+  onBack: () => void;
   userData?: {
     name: string;
     username: string;
@@ -48,25 +51,49 @@ interface CreateEventPageProps {
   } | null;
 }
 
-export default function CreateEventPage({ onSubmit, userData }: CreateEventPageProps) {
-  const [title, setTitle] = useState('');
-  const [location, setLocation] = useState('');
-  const [description, setDescription] = useState('');
-  const [selectedType, setSelectedType] = useState('party');
+export default function EditEventPage({ event, onSubmit, onDelete, onBack, userData }: EditEventPageProps) {
+  const [title, setTitle] = useState(event.title || '');
+  const [location, setLocation] = useState((event.location || '').replace('@', ''));
+  const [description, setDescription] = useState(event.description || '');
+  const [selectedType, setSelectedType] = useState(event.type || 'party');
   const [showCalendar, setShowCalendar] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Parse date string back to Date object if possible
+  const [selectedDate, setSelectedDate] = useState<Date>(() => {
+    try {
+      if (event.date) {
+        return parse(event.date, "d MMMM yyyy", new Date());
+      }
+    } catch (e) {
+      console.error("Date parsing failed", e);
+    }
+    return new Date();
+  });
 
-  const [selectedHour, setSelectedHour] = useState(9);
-  const [selectedMinute, setSelectedMinute] = useState(0);
+  const [currentMonth, setCurrentMonth] = useState(selectedDate);
 
-  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  // Parse time string (HH:mm)
+  const [selectedHour, setSelectedHour] = useState(() => {
+    if (event.time && event.time.includes(':')) {
+      return parseInt(event.time.split(':')[0]);
+    }
+    return 9;
+  });
+  const [selectedMinute, setSelectedMinute] = useState(() => {
+    if (event.time && event.time.includes(':')) {
+      return parseInt(event.time.split(':')[1]);
+    }
+    return 0;
+  });
+
+  const [uploadedImage, setUploadedImage] = useState<string | null>(event.image || null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileUpload = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (!file) return;
 
     setIsUploading(true);
@@ -91,15 +118,15 @@ export default function CreateEventPage({ onSubmit, userData }: CreateEventPageP
     }
   };
 
-  const handleSubmit = () => {
+  const handleSave = () => {
     if (!title.trim() || !location.trim()) {
       alert("Please fill in all fields!");
       return;
     }
 
     const typeData = TYPES.find(t => t.id === selectedType);
-    const newEvent = {
-      id: Date.now().toString(),
+    const updatedEvent = {
+      ...event,
       title,
       location: `@${location}`,
       date: format(selectedDate, "d MMMM yyyy"),
@@ -107,19 +134,27 @@ export default function CreateEventPage({ onSubmit, userData }: CreateEventPageP
       type: selectedType,
       typeLabel: typeData?.label,
       Icon: typeData?.Icon,
-      image: uploadedImage || '/images/party.jpg',
-      description: description.trim() || `A ${selectedType} event newly created! Excited to see everyone there.`,
+      image: uploadedImage || event.image,
+      description: description.trim(),
       organizer: {
-        name: userData?.name || "Personal Organizer",
-        image: userData?.profileImage || "/images/User.jpg",
-        email: userData?.email || "",
-        username: userData?.username || ""
+        name: userData?.name || event.organizer?.name || "Personal Organizer",
+        image: userData?.profileImage || event.organizer?.image || "/images/User.jpg",
+        email: userData?.email || event.organizer?.email || "",
+        username: userData?.username || event.organizer?.username || ""
       }
     };
 
-    if (onSubmit) {
-      onSubmit(newEvent);
+    onSubmit(updatedEvent);
+  };
+
+  const handleDelete = () => {
+    if (!isDeleting) {
+      setIsDeleting(true);
+      // Auto-cancel after 3 seconds if not confirmed
+      setTimeout(() => setIsDeleting(false), 3000);
+      return;
     }
+    onDelete(event.id);
   };
 
   const days = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -134,11 +169,9 @@ export default function CreateEventPage({ onSubmit, userData }: CreateEventPageP
         </div>
 
         <div className="flex-1 relative flex items-center justify-center overflow-hidden">
-          {/* Highlight Center Line */}
           <div className="absolute left-0 right-0 h-10 border-y border-gray-100 pointer-events-none" />
           
           <div className="flex w-full justify-center gap-8 h-full relative z-10">
-            {/* Hours */}
             <div className="flex-1 h-full overflow-y-auto no-scrollbar snap-y snap-mandatory py-20 text-center">
               {HOURS.map((h) => (
                 <div 
@@ -153,7 +186,6 @@ export default function CreateEventPage({ onSubmit, userData }: CreateEventPageP
               ))}
             </div>
 
-            {/* Minutes */}
             <div className="flex-1 h-full overflow-y-auto no-scrollbar snap-y snap-mandatory py-20 text-center">
               {MINUTES.map((m) => (
                 <div 
@@ -170,7 +202,7 @@ export default function CreateEventPage({ onSubmit, userData }: CreateEventPageP
           </div>
         </div>
 
-        <div className="mt-2 pb-1">
+        <div className="mt-2 pb-1 text-center">
           <button 
             onClick={() => setShowTimePicker(false)}
             className="w-full py-3 text-blue-600 font-bold text-sm hover:bg-blue-50 rounded-2xl transition-colors"
@@ -230,7 +262,7 @@ export default function CreateEventPage({ onSubmit, userData }: CreateEventPageP
                 }}
                 className={`h-12 flex items-center justify-center rounded-2xl text-sm font-semibold transition-all ${
                   !isCurrentMonth ? 'text-gray-200' : 
-                  isSelected ? 'bg-[#1D72FE] text-white shadow-lg shadow-blue-200' :
+                  isSelected ? 'bg-blue-600 text-white shadow-lg' :
                   'text-gray-700 hover:bg-blue-50'
                 }`}
               >
@@ -244,10 +276,10 @@ export default function CreateEventPage({ onSubmit, userData }: CreateEventPageP
   };
 
   return (
-    <div className="max-w-4xl mx-auto pb-32 px-6">
+    <div className="max-w-6xl mx-auto pb-32 px-6">
       <div className="animate-in fade-in slide-in-from-bottom-6 duration-500">
         <div className="flex mb-8 mt-4">
-          <h1 className={TYPOGRAPHY.sectionTitle}>Create Event</h1>
+          <h1 className={TYPOGRAPHY.sectionTitle}>Edit Event</h1>
         </div>
 
         {/* Image Upload Area */}
@@ -275,16 +307,11 @@ export default function CreateEventPage({ onSubmit, userData }: CreateEventPageP
               <span className={TYPOGRAPHY.labelEmphasis}>Uploading...</span>
             </div>
           ) : (
-            <>
-              <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-md mb-4 text-[#1D72FE]">
-                <Plus className="w-8 h-8" />
-              </div>
-              <span className={TYPOGRAPHY.labelEmphasis}>add pic</span>
-            </>
+            <span className={TYPOGRAPHY.label}>No Image</span>
           )}
 
-          {uploadedImage && !isUploading && (
-            <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+          {!isUploading && (
+            <div className={`absolute inset-0 bg-black/20 ${uploadedImage ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'} transition-opacity flex items-center justify-center`}>
               <div className={"bg-white/90 backdrop-blur px-4 py-2 rounded-full text-blue-600 font-bold " + TYPOGRAPHY.body.replace('text-gray-500', '')}>
                 Change Picture
               </div>
@@ -299,8 +326,7 @@ export default function CreateEventPage({ onSubmit, userData }: CreateEventPageP
             type="text" 
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Name this event..."
-            className={"w-full bg-white rounded-full py-5 px-8 shadow-[0_10px_30px_rgba(0,0,0,0.05)] border border-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-gray-300 normal-case " + TYPOGRAPHY.body.replace('text-gray-500', '')}
+            className={"w-full bg-white rounded-full py-5 px-8 shadow-[0_10px_30px_rgba(0,0,0,0.05)] border border-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all normal-case " + TYPOGRAPHY.body.replace('text-gray-500', '')}
           />
         </div>
 
@@ -308,88 +334,60 @@ export default function CreateEventPage({ onSubmit, userData }: CreateEventPageP
         <div className="mb-8">
           <label className={TYPOGRAPHY.formLabel}>When?</label>
           <div className="space-y-4">
-            <div className="relative">
-              <button 
-                onClick={() => setShowCalendar(true)}
-                className="w-full bg-white rounded-full py-5 px-8 shadow-[0_10px_30px_rgba(0,0,0,0.05)] border border-gray-100 text-left font-medium transition-all hover:bg-gray-50"
-              >
-                <div className="flex items-center justify-between">
-                  <span className={TYPOGRAPHY.body.replace('text-gray-500', 'text-gray-900')}>{selectedDate ? format(selectedDate, "dd/MM/yyyy") : "dd/mm/yyyy"}</span>
-                  <span className={TYPOGRAPHY.labelEmphasis}>Date</span>
-                </div>
-              </button>
-            </div>
-            <div className="relative">
-              <button 
-                onClick={() => setShowTimePicker(true)}
-                className="w-full bg-white rounded-full py-5 px-8 shadow-[0_10px_30px_rgba(0,0,0,0.05)] border border-gray-100 text-left font-medium transition-all hover:bg-gray-50"
-              >
-                <div className="flex items-center justify-between">
-                  <span className={TYPOGRAPHY.body.replace('text-gray-500', 'text-gray-900')}>
-                    {selectedHour.toString().padStart(2, '0')}:{selectedMinute.toString().padStart(2, '0')}
-                  </span>
-                  <span className={TYPOGRAPHY.labelEmphasis}>Time</span>
-                </div>
-              </button>
-            </div>
+            <button 
+              onClick={() => setShowCalendar(true)}
+              className="w-full bg-white rounded-full py-5 px-8 shadow-[0_10px_30px_rgba(0,0,0,0.05)] border border-gray-100 text-left font-medium transition-all hover:bg-gray-50 flex items-center justify-between"
+            >
+              <span className={TYPOGRAPHY.body.replace('text-gray-500', 'text-gray-900')}>{format(selectedDate, "dd/MM/yyyy")}</span>
+              <span className={TYPOGRAPHY.labelEmphasis}>Date</span>
+            </button>
+            <button 
+              onClick={() => setShowTimePicker(true)}
+              className="w-full bg-white rounded-full py-5 px-8 shadow-[0_10px_30px_rgba(0,0,0,0.05)] border border-gray-100 text-left font-medium transition-all hover:bg-gray-50 flex items-center justify-between"
+            >
+              <span className={TYPOGRAPHY.body.replace('text-gray-500', 'text-gray-900')}>
+                {selectedHour.toString().padStart(2, '0')}:{selectedMinute.toString().padStart(2, '0')}
+              </span>
+              <span className={TYPOGRAPHY.labelEmphasis}>Time</span>
+            </button>
           </div>
         </div>
 
-        {/* Calendar Modal */}
+        {/* Modal Components (Calendar/Time) remain the same */}
         <AnimatePresence>
           {showCalendar && (
             <>
               <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 onClick={() => setShowCalendar(false)}
                 className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[2000]"
               />
               <motion.div 
-                initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }}
                 className="fixed inset-x-6 top-1/2 -translate-y-1/2 bg-white rounded-[40px] shadow-2xl z-[2010] overflow-hidden max-w-sm mx-auto"
               >
                 {renderCalendar()}
-                <button 
-                  onClick={() => setShowCalendar(false)}
-                  className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 bg-gray-100/50 rounded-full transition-colors z-50"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                <button onClick={() => setShowCalendar(false)} className="absolute top-4 right-4 p-2 text-gray-400 bg-gray-100/50 rounded-full"><X className="w-5 h-5" /></button>
               </motion.div>
             </>
           )}
         </AnimatePresence>
 
-        {/* Time Picker Bottom Sheet */}
         <AnimatePresence>
           {showTimePicker && (
             <>
               <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 onClick={() => setShowTimePicker(false)}
                 className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[2000]"
               />
               <motion.div 
-                initial={{ y: "100%" }}
-                animate={{ y: 0 }}
-                exit={{ y: "100%" }}
+                initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
                 transition={{ type: "spring", damping: 25, stiffness: 200 }}
                 className="fixed inset-x-0 bottom-0 bg-white rounded-t-[40px] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-[2010] overflow-hidden max-w-lg mx-auto w-full"
               >
                 <div className="w-12 h-1.5 bg-gray-100 rounded-full mx-auto mt-4 mb-2" />
                 {renderTimePicker()}
-                <button 
-                  onClick={() => setShowTimePicker(false)}
-                  className="absolute top-6 right-6 p-2 text-gray-400 hover:text-gray-600 bg-gray-100/50 rounded-full transition-colors z-50"
-                >
-                  <X className="w-4 h-4" />
-                </button>
               </motion.div>
             </>
           )}
@@ -407,9 +405,9 @@ export default function CreateEventPage({ onSubmit, userData }: CreateEventPageP
               value={location}
               onChange={(e) => setLocation(e.target.value)}
               placeholder="Place"
-              className={"w-full bg-white rounded-full py-5 px-8 shadow-[0_10px_30px_rgba(0,0,0,0.05)] border border-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-gray-300 pr-14 normal-case " + TYPOGRAPHY.body.replace('text-gray-500', '')}
+              className={"w-full bg-white rounded-full py-5 px-8 shadow-[0_10px_30px_rgba(0,0,0,0.05)] border border-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all pr-14 normal-case " + TYPOGRAPHY.body.replace('text-gray-500', '')}
             />
-            <div className="absolute right-6 top-1/2 -translate-y-1/2 text-[#1D72FE]">
+            <div className="absolute right-6 top-1/2 -translate-y-1/2 text-blue-600">
               <MapPin size={24} />
             </div>
           </div>
@@ -421,44 +419,50 @@ export default function CreateEventPage({ onSubmit, userData }: CreateEventPageP
           <textarea 
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="What's this event about?"
             rows={4}
-            className={"w-full bg-white rounded-[32px] py-5 px-8 shadow-[0_10px_30px_rgba(0,0,0,0.05)] border border-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-gray-300 resize-none normal-case " + TYPOGRAPHY.body.replace('text-gray-500', '')}
+            className={"w-full bg-white rounded-[32px] py-5 px-8 shadow-[0_10px_30_rgba(0,0,0,0.05)] border border-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all resize-none normal-case " + TYPOGRAPHY.body.replace('text-gray-500', '')}
           />
         </div>
 
-        {/* Type Section */}
+        {/* Type Selection */}
         <div className="mb-12">
           <label className={TYPOGRAPHY.formLabel}>Type</label>
           <div className="flex justify-between items-center overflow-x-auto no-scrollbar py-4 px-2 gap-6">
             {TYPES.map((type) => (
-              <button
-                key={type.id}
-                onClick={() => setSelectedType(type.id)}
-                className="flex flex-col items-center gap-2 flex-shrink-0 group"
-              >
+              <button key={type.id} onClick={() => setSelectedType(type.id)} className="flex flex-col items-center gap-2 flex-shrink-0">
                 <div className={`transition-all duration-300 ${selectedType === type.id ? 'scale-110' : 'opacity-60 grayscale hover:opacity-100 hover:grayscale-0'}`}>
                   <type.Icon size={32} className="!w-16 !h-16" />
                 </div>
-                <span className={`${TYPOGRAPHY.label} transition-colors ${selectedType === type.id ? 'text-blue-600' : 'text-gray-500'}`}>
-                  {type.label}
-                </span>
+                <span className={`${TYPOGRAPHY.label} ${selectedType === type.id ? 'text-blue-600' : 'text-gray-500'}`}>{type.label}</span>
               </button>
             ))}
           </div>
         </div>
 
-        {/* Submit Button */}
-        <div className="flex justify-center">
+        {/* Action Buttons */}
+        <div className="flex gap-4">
           <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={handleSubmit}
-            className="w-full max-w-md bg-[#1D72FE] text-white rounded-full py-6 flex items-center justify-center gap-3 shadow-xl shadow-blue-200"
+            whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+            onClick={handleSave}
+            className="flex-[4] bg-blue-600 text-white rounded-full py-6 flex items-center justify-center gap-3 shadow-xl shadow-blue-200"
           >
-            <Plus className="w-6 h-6 stroke-[3px]" />
-            <span className="text-xl font-semibold">Create Event</span>
+            <Save className="w-6 h-6" />
+            <span className="text-xl font-bold">Done</span>
           </motion.button>
+          <button
+            onClick={handleDelete}
+            className={`flex-1 rounded-full py-6 flex items-center justify-center transition-all duration-300 ${
+              isDeleting 
+                ? 'bg-red-600 text-white flex-[3]' 
+                : 'bg-red-50 text-red-500 flex-1 hover:bg-red-100'
+            }`}
+          >
+            {isDeleting ? (
+              <span className="font-bold whitespace-nowrap px-4 animate-pulse text-sm">Confirm?</span>
+            ) : (
+              <Trash2 className="w-6 h-6" />
+            )}
+          </button>
         </div>
       </div>
     </div>

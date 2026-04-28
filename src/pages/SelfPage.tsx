@@ -1,155 +1,174 @@
+import React, { useMemo } from 'react';
+import { Pencil, ArrowRight } from 'lucide-react';
 import { motion } from 'motion/react';
-import { GlassWater, Dumbbell, Palette } from 'lucide-react';
-import Snapshots from '../components/Snapshots';
+import Snapshots from '../components/events/Snapshots';
+import MoodTracker from '../components/mood/MoodTracker';
+import { useJoin } from '../context/JoinContext';
+import { MOODS } from '../components/mood/MoodPicker';
+import { TYPOGRAPHY } from '../styles/typography';
 
-const CATEGORIES = [
-  { id: 'party', label: 'Party', current: 4, total: 10, icon: GlassWater, color: '#FF5C5C' },
-  { id: 'workout', label: 'Workout', current: 3, total: 10, icon: Dumbbell, color: '#1371FF' },
-  { id: 'art', label: 'Art', current: 2, total: 10, icon: Palette, color: '#5CD1FF' },
-];
+interface SelfPageProps {
+  onEventClick: (event: any) => void;
+  userData?: {
+    name: string;
+    username: string;
+    email: string;
+    phone: string;
+    profileImage?: string;
+  } | null;
+  onMoodHistoryClick?: () => void;
+  onSnapshotsClick?: () => void;
+  onEdit?: () => void;
+}
 
-const CALENDAR_DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
-const START_DAY = 0; // Sunday
+export default function SelfPage({ onEventClick, userData, onMoodHistoryClick, onSnapshotsClick, onEdit }: SelfPageProps) {
+  const { getOrganizerMoodStats } = useJoin();
+  
+  const stats = getOrganizerMoodStats(userData?.email || '');
+  const total = stats.reduce((a, b) => a + b, 0);
 
-const HIGHLIGHTS = [
-  { day: 1, color: '#1371FF', type: 'full' },
-  { day: 2, color: '#1371FF', type: 'bottom' },
-  { day: 3, color: '#1371FF', type: 'bottom' },
-  { day: 5, color: '#FF5C5C', type: 'top' },
-  { day: 8, color: '#1371FF', type: 'left' },
-  { day: 9, color: '#1371FF', type: 'left' },
-  { day: 10, color: '#FFD600', type: 'left' },
-  { day: 14, color: '#5CD1FF', type: 'right' },
-  { day: 18, color: '#FF5C5C', type: 'top' },
-  { day: 23, color: '#FFD600', type: 'left' },
-  { day: 24, color: '#FFD600', type: 'left' },
-  { day: 26, color: '#5CD1FF', type: 'left' },
-  { day: 27, color: '#1371FF', type: 'left' },
-  { day: 28, color: '#1371FF', type: 'bottom' },
-];
+  const gradientStyle = useMemo(() => {
+    const pickedMoods = MOODS.filter((_, idx) => stats[idx] > 0);
+    if (pickedMoods.length === 0) return { background: '#f9fafb' };
+    
+    const colors = pickedMoods.map(m => `${m.hex}20`); 
+    
+    if (colors.length === 1) {
+      return { background: `linear-gradient(135deg, ${colors[0]}, #ffffff)` };
+    }
+    
+    return { background: `linear-gradient(135deg, ${colors.join(', ')})` };
+  }, [stats]);
 
-export default function SelfPage() {
   return (
     <div className="max-w-6xl mx-auto pb-24">
       <div className="bg-white">
       <div className="px-6 py-4">
         {/* Profile Section */}
         <div className="flex flex-col items-center mb-10 mt-4">
-          <div className="w-60 h-60 rounded-full overflow-hidden shadow-l mb-4">
-            <img
-              src="/images/User.jpg"
-              alt="Profile"
-              className="w-full h-full object-cover"
-              referrerPolicy="no-referrer"
-            />
+          <div className="relative group">
+            <div className="w-60 h-60 rounded-[60px] overflow-hidden shadow-l mb-4 bg-gray-100 border-4 border-white">
+              <img
+                src={userData?.profileImage || "/images/User.jpg"}
+                alt="Profile"
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            <button 
+              onClick={onEdit}
+              className="absolute bottom-6 right-2 w-12 h-12 bg-[#1D72FE] text-white rounded-3xl flex items-center justify-center shadow-lg hover:bg-blue-600 transition-colors border-2 border-white"
+            >
+              <Pencil size={20} />
+            </button>
           </div>
-          <h2 className="text-4xl font-bold text-[#1D72FE]">Pristine Kai</h2>
+          <h2 className={TYPOGRAPHY.h1.replace('text-blue-600', 'text-[#1D72FE]') + " !text-4xl"}>{userData?.name || "Natpakal"}</h2>
+          {userData?.username && (
+            <p className={TYPOGRAPHY.label + " mt-1"}>@{userData.username}</p>
+          )}
         </div>
 
-        <h1 className="text-2xl font-bold text-blue-600 mb-8">Snapshots!</h1>
-
-        {/* Category Progress */}
-        <div className="flex justify-between gap-4 mb-10 overflow-x-auto no-scrollbar py-2">
-          {CATEGORIES.map((cat) => (
-            <div key={cat.id} className="flex flex-col items-center gap-2 flex-shrink-0">
-              <div className="relative w-28 h-28 flex items-center justify-center">
-                <svg className="w-full h-full -rotate-90">
-                  <circle
-                    cx="56"
-                    cy="56"
-                    r="50"
-                    fill="none"
-                    stroke="#F3F4F6"
-                    strokeWidth="8"
-                  />
-                  <motion.circle
-                    cx="56"
-                    cy="56"
-                    r="50"
-                    fill="none"
-                    stroke={cat.color}
-                    strokeWidth="8"
-                    strokeDasharray={2 * Math.PI * 50}
-                    initial={{ strokeDashoffset: 2 * Math.PI * 50 }}
-                    animate={{ strokeDashoffset: 2 * Math.PI * 50 * (1 - cat.current / cat.total) }}
-                    transition={{ duration: 1.5, ease: "easeOut" }}
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <cat.icon className="w-6 h-6 text-blue-600 mb-1" />
-                  <span className="text-xs font-bold text-gray-900">{cat.label}</span>
-                  <span className="text-[10px] font-medium text-gray-400">{cat.current}/{cat.total}</span>
+        {/* Content Section: Feedback & Snapshots */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-10">
+          {/* Feedback Column */}
+          <div className="lg:col-span-5 flex flex-col">
+            <div 
+              style={gradientStyle}
+              className="rounded-[40px] p-6 h-full relative overflow-hidden shadow-sm border border-gray-100 transition-all duration-500"
+            >
+              <div className="relative z-10">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h3 className={TYPOGRAPHY.h2}>Your Feedback</h3>
+                    <p className={TYPOGRAPHY.label + " opacity-60"}>from your previous events</p>
+                  </div>
+                  <div className="bg-white/60 backdrop-blur-sm px-3 py-1.5 rounded-xl border border-gray-100 text-center shadow-sm">
+                    <div className={TYPOGRAPHY.display + " !text-lg"}>{total}</div>
+                    <div className={TYPOGRAPHY.label}>Reviews</div>
+                  </div>
                 </div>
+
+                {total === 0 ? (
+                  <div className="py-8 text-center bg-white/40 rounded-3xl border border-gray-200">
+                    <p className={TYPOGRAPHY.label}>No feedback yet</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-5 gap-1 mb-6">
+                      {MOODS.map((mood, idx) => {
+                        const count = stats[idx] || 0;
+                        const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
+                        
+                        return (
+                          <div key={idx} className="flex flex-col items-center gap-1.5">
+                            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white border border-gray-100 shadow-sm relative group">
+                              <mood.icon className={`w-5 h-5 ${mood.color}`} />
+                              {count > 0 && (
+                                <div className="absolute -top-1 -right-1 w-4 h-4 bg-gray-900 rounded-full flex items-center justify-center text-[8px] font-black text-white border-2 border-white">
+                                  {count}
+                                </div>
+                              )}
+                            </div>
+                            <div className="text-center">
+                              <p className="text-[10px] font-black text-gray-900 leading-none">{percentage}%</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="h-2 w-full bg-gray-200/50 rounded-full overflow-hidden flex shadow-inner">
+                      {MOODS.map((mood, idx) => {
+                        const count = stats[idx] || 0;
+                        if (count === 0) return null;
+                        const percentage = (count / total) * 100;
+                        
+                        return (
+                          <motion.div
+                            key={idx}
+                            initial={{ width: 0 }}
+                            animate={{ width: `${percentage}%` }}
+                            transition={{ duration: 1, delay: idx * 0.1, ease: [0.23, 1, 0.32, 1] }}
+                            className={`h-full ${mood.bgColor} opacity-80`}
+                          />
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
-          ))}
-        </div>
-
-        {/* Snapshots Gallery */}
-        <div className="-mx-6">
-          <Snapshots showHeader={false} />
-        </div>
-
-        {/* Mood Tracking Calendar */}
-        <div className="mt-8 bg-white rounded-[40px] shadow-2xl p-8 border border-gray-50">
-          <div className="flex justify-between items-center mb-8">
-            <h2 className="text-xl font-bold text-blue-600">Mood tracking</h2>
-            <span className="text-lg font-medium text-gray-900">March '26</span>
           </div>
 
-          <div className="grid grid-cols-7 gap-y-6 text-center">
-            {['S', 'M', 'T', 'W', 'TH', 'F', 'S'].map((day, index) => (
-              <span key={`${day}-${index}`} className="text-sm font-bold text-gray-900">{day}</span>
-            ))}
-            
-            {/* Empty spaces for start of month */}
-            {Array.from({ length: START_DAY }).map((_, i) => (
-              <div key={`empty-${i}`} />
-            ))}
-
-            {CALENDAR_DAYS.map((day) => {
-              const highlight = HIGHLIGHTS.find(h => h.day === day);
-              
-              return (
-                <div key={day} className="relative h-10 flex items-center justify-center">
-                  <span className={`text-sm font-medium z-10 ${highlight?.type === 'full' ? 'text-white' : 'text-gray-900'}`}>
-                    {day}
-                  </span>
-                  
-                  {highlight && (
-                    <div 
-                      className="absolute inset-0 flex items-center justify-center pointer-events-none"
-                    >
-                      {highlight.type === 'full' && (
-                        <div className="w-8 h-8 rounded-full" style={{ backgroundColor: highlight.color }} />
-                      )}
-                      {highlight.type === 'bottom' && (
-                        <div className="absolute bottom-0 left-0 right-0 h-0.5" style={{ backgroundColor: highlight.color }} />
-                      )}
-                      {highlight.type === 'top' && (
-                        <div className="absolute top-0 left-0 right-0 h-0.5" style={{ backgroundColor: highlight.color }} />
-                      )}
-                      {highlight.type === 'left' && (
-                        <div className="absolute top-0 bottom-0 left-0 w-0.5" style={{ backgroundColor: highlight.color }} />
-                      )}
-                      {highlight.type === 'right' && (
-                        <div className="absolute top-0 bottom-0 right-0 w-0.5" style={{ backgroundColor: highlight.color }} />
-                      )}
-                    </div>
-                  )}
+          {/* Snapshots Column */}
+          <div className="lg:col-span-7 flex flex-col justify-between">
+            <div 
+              className="mb-2 flex items-center justify-between cursor-pointer group"
+              onClick={onSnapshotsClick}
+            >
+              <div className="flex items-center gap-2">
+                <h1 className={TYPOGRAPHY.sectionTitle}>Snapshots!</h1>
+                <div className="bg-blue-100 text-blue-600 text-[10px] font-black px-2 py-0.5 rounded-full">
+                  All
                 </div>
-              );
-            })}
-            
-            {/* Next month preview */}
-            {[1, 2, 3, 4].map((day) => (
-              <div key={`next-${day}`} className="h-10 flex items-center justify-center">
-                <span className="text-sm font-medium text-gray-300">{day}</span>
               </div>
-            ))}
+              <ArrowRight className="text-blue-600 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            </div>
+            <div className="-mx-6">
+              <Snapshots 
+                showHeader={false} 
+                onSnapshotClick={onEventClick}
+                onHeaderClick={onSnapshotsClick}
+              />
+            </div>
           </div>
         </div>
+
+        {/* Mood Tracking Section */}
+        <MoodTracker 
+          onSeeHistory={onMoodHistoryClick} 
+          onEventClick={onEventClick}
+        />
       </div>
       </div>
     </div>
